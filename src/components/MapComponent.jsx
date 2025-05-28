@@ -26,7 +26,7 @@ export const MapComponent = ({ onMapLoad, directionResponse }) => {
                 }
             );
         }
-    }, []);
+    }, [userLocation]);
 
     const center = userLocation || {
         lat: 25.5941,
