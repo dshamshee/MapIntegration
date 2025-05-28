@@ -1,9 +1,11 @@
 import { useJsApiLoader, GoogleMap, Marker, DirectionsRenderer } from '@react-google-maps/api';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 export const MapComponent = ({ onMapLoad, directionResponse }) => {
     const [loadError, setLoadError] = useState(/** @type google.maps.Map */ (null));
     const [userLocation, setUserLocation] = useState(null);
+    const [map, setMap] = useState(null);
+    const [watchId, setWatchId] = useState(null);
 
     const { isLoaded, loadError: apiLoadError } = useJsApiLoader({
         googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAP_API,
@@ -11,22 +13,48 @@ export const MapComponent = ({ onMapLoad, directionResponse }) => {
         onError: (error) => setLoadError(error)
     });
 
+    // Handle map load
+    const handleMapLoad = useCallback((map) => {
+        setMap(map);
+        if (onMapLoad) onMapLoad(map);
+    }, [onMapLoad]);
+
     useEffect(() => {
-        // Get user's current location
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
+        // Start watching user's position with high accuracy
+        if (navigator.geolocation && !watchId) {
+            const id = navigator.geolocation.watchPosition(
                 (position) => {
-                    setUserLocation({
+                    const newLocation = {
                         lat: position.coords.latitude,
                         lng: position.coords.longitude
-                    });
+                    };
+                    setUserLocation(newLocation);
+                    
+                    // If map is loaded and we're following the user, center the map
+                    if (map && directionResponse) {
+                        map.panTo(newLocation);
+                    }
                 },
                 (error) => {
-                    console.error("Error getting location:", error);
+                    console.error("Error tracking location:", error);
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 5000,
+                    maximumAge: 0
                 }
             );
+            setWatchId(id);
         }
-    }, [userLocation]);
+
+        // Cleanup function to stop watching location
+        return () => {
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+                setWatchId(null);
+            }
+        };
+    }, [map, directionResponse]);
 
     const center = userLocation || {
         lat: 25.5941,
@@ -59,14 +87,22 @@ export const MapComponent = ({ onMapLoad, directionResponse }) => {
                     zoomControl: true,
                     streetViewControl: true,
                     mapTypeControl: true,
-                    fullscreenControl: true
+                    fullscreenControl: true,
+                    rotateControl: true,
+                    scaleControl: true
                 }}
-                onLoad={onMapLoad}
+                onLoad={handleMapLoad}
             >
                 {userLocation && <Marker 
                     position={userLocation}
                     icon={{
-                        url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'
+                        // eslint-disable-next-line no-undef
+                        path: window.google.maps.SymbolPath.CIRCLE,
+                        scale: 8,
+                        fillColor: "#4285F4",
+                        fillOpacity: 1,
+                        strokeColor: "#ffffff",
+                        strokeWeight: 2,
                     }}
                 />}
                 {directionResponse && (

@@ -6,36 +6,12 @@ export const InputSection = ({
   setDirectionResponse,
   directionResponse,
 }) => {
-  const [loadError, setLoadError] = useState(
-    /** @type google.maps.Map */ (null)
-  );
+  const [loadError, setLoadError] = useState(/** @type google.maps.Map */ (null));
   const [distance, setDistance] = useState(null);
   const [duration, setDuration] = useState(null);
   const [isNavigating, setIsNavigating] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
-
-  useEffect(() => {
-    // Get user's current location
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setUserLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          });
-        },
-        (error) => {
-          console.error("Error getting location:", error);
-        }
-      );
-    }
-  }, []);
-
-  const handleUserLocation = ()=>{
-    if(userLocation){
-      yourLocationRef.current.value = userLocation.lat + "," + userLocation.lng;
-    }
-  }
+  const [navigationInterval, setNavigationInterval] = useState(null);
 
   /** @type React.MutableRefObject<HTMLInputElement> */
   const yourLocationRef = useRef(null);
@@ -48,6 +24,47 @@ export const InputSection = ({
     libraries: ["places"],
     onError: (error) => setLoadError(error),
   });
+
+  useEffect(() => {
+    // Get user's current location
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const newLocation = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          };
+          setUserLocation(newLocation);
+          
+          // If we're navigating, update the route
+          if (isNavigating) {
+            updateRouteFromCurrentLocation(newLocation);
+          }
+        },
+        (error) => {
+          console.error("Error getting location:", error);
+        }
+      );
+    }
+  }, [isNavigating]);
+
+  const updateRouteFromCurrentLocation = async (currentPosition) => {
+    try {
+      // eslint-disable-next-line no-undef
+      const directionsService = new google.maps.DirectionsService();
+      const results = await directionsService.route({
+        origin: currentPosition,
+        destination: destinationRef.current.value,
+        // eslint-disable-next-line no-undef
+        travelMode: google.maps.TravelMode.DRIVING,
+      });
+      setDirectionResponse(results);
+      setDistance(results.routes[0].legs[0].distance.text);
+      setDuration(results.routes[0].legs[0].duration.text);
+    } catch (error) {
+      console.error("Error updating route:", error);
+    }
+  };
 
   const calculateDirection = async () => {
     if (
@@ -82,7 +99,6 @@ export const InputSection = ({
     }
 
     try {
-      // Check if geolocation is supported
       if (!navigator.geolocation) {
         alert("Geolocation is not supported by your browser");
         return;
@@ -90,37 +106,28 @@ export const InputSection = ({
 
       setIsNavigating(true);
 
-      // Get current position
-      navigator.geolocation.watchPosition(
-        async (position) => {
-          const currentPosition = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          };
+      // Set up interval to update route every 10 seconds
+      const intervalId = setInterval(() => {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const currentPosition = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+            };
+            updateRouteFromCurrentLocation(currentPosition);
+          },
+          (error) => {
+            console.error("Error getting location:", error);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 0,
+          }
+        );
+      }, 10000); // Update every 10 seconds
 
-          // Update route from current position
-          // eslint-disable-next-line no-undef
-          const directionsService = new google.maps.DirectionsService();
-          const results = await directionsService.route({
-            origin: currentPosition,
-            destination: destinationRef.current.value,
-            // eslint-disable-next-line no-undef
-            travelMode: google.maps.TravelMode.DRIVING,
-          });
-          setDirectionResponse(results);
-          setDistance(results.routes[0].legs[0].distance.text);
-          setDuration(results.routes[0].legs[0].duration.text);
-        },
-        (error) => {
-          alert("Error getting your location: " + error.message);
-          setIsNavigating(false);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 5000,
-          maximumAge: 0,
-        }
-      );
+      setNavigationInterval(intervalId);
     } catch (error) {
       alert("Navigation error: " + error.message);
       setIsNavigating(false);
@@ -129,8 +136,17 @@ export const InputSection = ({
 
   const stopNavigation = () => {
     setIsNavigating(false);
-    // Re-calculate the original route
-    calculateDirection();
+    if (navigationInterval) {
+      clearInterval(navigationInterval);
+      setNavigationInterval(null);
+    }
+    calculateDirection(); // Recalculate the original route
+  };
+
+  const handleUserLocation = () => {
+    if (userLocation) {
+      yourLocationRef.current.value = `${userLocation.lat},${userLocation.lng}`;
+    }
   };
 
   const clearRoute = () => {
@@ -138,6 +154,10 @@ export const InputSection = ({
     setDuration("");
     setDistance("");
     setIsNavigating(false);
+    if (navigationInterval) {
+      clearInterval(navigationInterval);
+      setNavigationInterval(null);
+    }
     yourLocationRef.current.value = "";
     destinationRef.current.value = "";
   };
@@ -160,7 +180,7 @@ export const InputSection = ({
 
   return (
     <div className="mainContainer flex flex-col justify-center items-center rounded-lg p-4">
-      <h1 className="text-white text-2xl font-bold">Google Map</h1>
+      <h1 className="text-white text-2xl font-bold">Google Map Navigation</h1>
       <div className="innerContainer bg-gray-800 rounded-lg w-[50%] p-5 flex flex-col justify-between gap-1">
         <div className="placeInput rounded-lg p-2 w-full flex justify-between items-center gap-5">
           <div className="inputes flex justify-between w-full">
@@ -214,11 +234,17 @@ export const InputSection = ({
         </div>
 
         <div className="valueContainer rounded-lg p-2 w-full flex justify-between items-center gap-5">
-          <p>Distance: {distance}</p>
-          <p>Time: {duration}</p>
+          <div className="info">
+            <p>Distance: {distance}</p>
+            <p>Time: {duration}</p>
+            {isNavigating && <p className="text-green-500">Navigation Active</p>}
+          </div>
 
           <div className="buttons flex gap-2">
-            <button onClick={handleUserLocation} className="btn btn-outline btn-sm px-5 text-white rounded-md py-1">
+            <button
+              onClick={handleUserLocation}
+              className="btn btn-outline btn-sm px-5 text-white rounded-md py-1"
+            >
               Your Location
             </button>
             <button
