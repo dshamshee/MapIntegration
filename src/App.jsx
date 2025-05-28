@@ -5,6 +5,7 @@ import { useState } from "react";
 function App() {
   const [map, setMap] = useState(null);
   const [directionResponse, setDirectionResponse] = useState(null);
+
   const handleSetCenter = () => {
     if (map) {
       const center = {
@@ -17,7 +18,11 @@ function App() {
 
   return (
     <div data-theme="dark">
-      <InputSection setDirectionResponse={setDirectionResponse} onCenterClick={handleSetCenter} />
+      <InputSection 
+        setDirectionResponse={setDirectionResponse} 
+        directionResponse={directionResponse}
+        onCenterClick={handleSetCenter} 
+      />
       <MapComponent onMapLoad={setMap} directionResponse={directionResponse} />
     </div>
   );

@@ -1,8 +1,9 @@
 import { useJsApiLoader, GoogleMap, Marker, DirectionsRenderer } from '@react-google-maps/api';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export const MapComponent = ({ onMapLoad, directionResponse }) => {
     const [loadError, setLoadError] = useState(/** @type google.maps.Map */ (null));
+    const [userLocation, setUserLocation] = useState(null);
 
     const { isLoaded, loadError: apiLoadError } = useJsApiLoader({
         googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAP_API,
@@ -10,10 +11,28 @@ export const MapComponent = ({ onMapLoad, directionResponse }) => {
         onError: (error) => setLoadError(error)
     });
 
-    const center = {
+    useEffect(() => {
+        // Get user's current location
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    setUserLocation({
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    });
+                },
+                (error) => {
+                    console.error("Error getting location:", error);
+                }
+            );
+        }
+    }, []);
+
+    const center = userLocation || {
         lat: 25.5941,
         lng: 85.1376
     };
+    
     const zoom = 15;
 
     if (loadError || apiLoadError) {
@@ -44,8 +63,24 @@ export const MapComponent = ({ onMapLoad, directionResponse }) => {
                 }}
                 onLoad={onMapLoad}
             >
-                <Marker position={center} />
-                {directionResponse && <DirectionsRenderer directions={directionResponse}/>}
+                {userLocation && <Marker 
+                    position={userLocation}
+                    icon={{
+                        url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'
+                    }}
+                />}
+                {directionResponse && (
+                    <DirectionsRenderer 
+                        directions={directionResponse}
+                        options={{
+                            suppressMarkers: false,
+                            polylineOptions: {
+                                strokeColor: "#2196F3",
+                                strokeWeight: 6
+                            }
+                        }}
+                    />
+                )}
             </GoogleMap>
         </div>
     );
